@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from lib.core.env import IS_PROD, BACKEND_BASE_URL
+from lib.core.env import IS_PROD, BACKEND_BASE_URL, FRONTEND_BASE_URL
 from lib.core.time import utcnow
 from mcp_st_bridge import McpConnectionError, get_bridge, stream_reply, whoami
 
@@ -396,8 +396,10 @@ def _render_instructions() -> None:
     st.subheader("1. Get two access tokens")
     st.markdown(
         "Log into your own Talentbook account, then open "
-        f"[Connected Agents]({BACKEND_BASE_URL.rstrip('/')}/app/connected-agents). "
-        "This page issues two different kinds of token, and there's no reason "
+        f'<a href="{FRONTEND_BASE_URL.rstrip("/")}/app/connected-agents" '
+        'target="_blank" rel="noopener">Connected Agents</a> (opens in a new '
+        "tab, so you stay logged in there and don't lose this chat). This "
+        "page issues two different kinds of token, and there's no reason "
         "not to create both now — they cover different data, and later steps "
         "here use each one:\n\n"
         "- **Personal token** (under *Your tokens*) — your own goals, skills, "
@@ -410,7 +412,8 @@ def _render_instructions() -> None:
         "scopes you want it to have — nothing is selected by default, and the "
         "token needs at least one. Copy the token (`tb_pat_...`) as soon as "
         "it's shown — it isn't shown again, and revoking it later is free if "
-        "you're just testing."
+        "you're just testing.",
+        unsafe_allow_html=True,
     )
 
     st.subheader("2. Connect")

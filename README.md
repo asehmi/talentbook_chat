@@ -67,6 +67,7 @@ differs between the two.
 | `GOOGLE_API_KEY` | If using `gemini` | Gemini API key (`GEMINI_API_KEY` also accepted). |
 | `OPENROUTER_API_KEY` | If using `openrouter` | OpenRouter API key (`OR_API_KEY` also accepted). |
 | `REFLEX_BE_BASE_URL` | No (default `http://localhost:8000`) | Pre-fills the sidebar's "Server address" box; the viewer can always type a different one — unless `IS_PROD` is true, in which case it's the only address ever used. |
+| `REFLEX_FE_BASE_URL` | No (default `http://localhost:3000`) | The Talentbook *frontend* — where a human signs in and the Connected Agents page lives. The Instructions page links here, not to `REFLEX_BE_BASE_URL`: those are often different origins (Talentbook's own dev setup runs them on separate ports), and linking to the wrong one sends an already-signed-in visitor through a fresh Auth0 challenge. Set it equal to `REFLEX_BE_BASE_URL` if Talentbook is deployed as one process behind one public URL. |
 | `IS_PROD` | No (default `false`) | Set `true` only on the prod deployment. Hides the sidebar's "Server address" box and fixes it to `REFLEX_BE_BASE_URL`, so a viewer's own token can't be used to repoint prod at a different backend. |
 
 The Talentbook access token used for a given chat is never stored here —

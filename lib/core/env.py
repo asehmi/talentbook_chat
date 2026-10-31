@@ -49,6 +49,19 @@ IS_PROD = _flag("IS_PROD", default=False)
 # used, so a viewer can't repoint the app at a different backend.
 BACKEND_BASE_URL = _secret("REFLEX_BE_BASE_URL", "http://localhost:8000")
 
+# The Talentbook *frontend* — where a human actually signs in and the
+# Connected Agents page lives, as opposed to BACKEND_BASE_URL above (the
+# FastAPI/MCP process a token talks to). In Talentbook's own dev setup
+# these are two different ports (frontend 3333, backend 8888 by this
+# project's convention), so linking to Connected Agents via
+# BACKEND_BASE_URL sent a signed-in visitor to an origin that was never
+# authenticated at all — a fresh Auth0 challenge even with Talentbook
+# already open and logged in elsewhere. Mirrors the main app's own
+# REFLEX_FE_BASE_URL/REFLEX_BE_BASE_URL split (lib/core/env.py there);
+# when Talentbook is deployed as one process behind one public URL, set
+# this to the same value as REFLEX_BE_BASE_URL.
+FRONTEND_BASE_URL = _secret("REFLEX_FE_BASE_URL", "http://localhost:3000")
+
 # ===== LLM provider =====
 # Which provider client lib.llm.get_llm_client() returns — "anthropic"
 # (default), "gemini", or "openrouter". All three share generate_response()'s
