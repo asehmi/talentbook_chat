@@ -7,12 +7,18 @@ whatever access token the viewer pastes in.
 
 There's no default credential: the sidebar requires a viewer to paste their
 own `tb_pat_...` token (personal or org-scoped — whichever that token's own
-scopes grant decides what shows up) and a server address before the chat
-does anything. The name/token fields sit in their own form with a submit
-button — needed because a browser-autofilled credential fires no on_change
-event, so without an explicit submit action nothing would tell Streamlit
-the fields changed. An optional name field next to the token exists only to
-help the browser's own password manager label a saved token.
+scopes grant decides what shows up) before the chat does anything. The
+name/token fields sit in their own form with a submit button — needed
+because a browser-autofilled credential fires no on_change event, so
+without an explicit submit action nothing would tell Streamlit the fields
+changed. An optional name field next to the token exists only to help the
+browser's own password manager label a saved token.
+
+The MCP server address is normally also editable in the sidebar (prefilled
+from `BACKEND_BASE_URL`), so the same deploy can be pointed at a different
+backend. On the prod deployment (`IS_PROD` secret), that box is hidden and
+the address is fixed to `BACKEND_BASE_URL` — a viewer's own token doesn't
+let them repoint prod at a different backend.
 
 Run with the Talentbook backend already running elsewhere (its MCP
 connector mounted at `/mcp`):
@@ -24,7 +30,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from lib.core.env import BACKEND_BASE_URL
+from lib.core.env import IS_PROD, BACKEND_BASE_URL
 from lib.core.time import utcnow
 from mcp_st_bridge import McpConnectionError, get_bridge, stream_reply, whoami
 
@@ -171,14 +177,23 @@ def _render() -> None:
             )
         token = st.session_state.get("token", "")
 
-        st.subheader(":material/dns: MCP server address")
-        server_address = st.text_input(
-            "Server address",
-            key="server_address",
-            value=BACKEND_BASE_URL,
-            placeholder="http://localhost:8888",
-            help="Base URL only — the /mcp/ endpoint path is added automatically.",
-        )
+        # On the prod deployment (IS_PROD secret), the server address is
+        # fixed to BACKEND_BASE_URL and never shown — a viewer pasting in
+        # their own token still can't repoint this deployment at a
+        # different backend. Everywhere else (local dev, a staging
+        # deploy), it's an editable box defaulting to BACKEND_BASE_URL,
+        # since pointing at a different backend is the whole point there.
+        if IS_PROD:
+            server_address = BACKEND_BASE_URL
+        else:
+            st.subheader(":material/dns: MCP server address")
+            server_address = st.text_input(
+                "Server address",
+                key="server_address",
+                value=BACKEND_BASE_URL,
+                placeholder="http://localhost:8888",
+                help="Base URL only — the /mcp/ endpoint path is added automatically.",
+            )
 
     st.title(":material/forum: Chat with Talentbook")
     st.caption(
@@ -190,9 +205,14 @@ def _render() -> None:
 
     server_address = server_address.strip()
     if not token or not server_address:
+        prompt = (
+            "Enter a Talentbook access token in the sidebar to start chatting"
+            if IS_PROD
+            else "Enter a Talentbook access token and server address in the sidebar "
+                 "to start chatting"
+        )
         st.info(
-            "Enter a Talentbook access token and server address in the sidebar "
-            "to start chatting — issue a token from the Connected Agents page.",
+            f"{prompt} — issue a token from the Connected Agents page.",
             icon=":material/key:",
         )
         st.stop()

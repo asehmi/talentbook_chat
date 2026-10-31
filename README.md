@@ -66,11 +66,13 @@ differs between the two.
 | `ANTHROPIC_API_KEY` | If using `anthropic` | Anthropic API key. |
 | `GOOGLE_API_KEY` | If using `gemini` | Gemini API key (`GEMINI_API_KEY` also accepted). |
 | `OPENROUTER_API_KEY` | If using `openrouter` | OpenRouter API key (`OR_API_KEY` also accepted). |
-| `REFLEX_BE_BASE_URL` | No (default `http://localhost:8000`) | Pre-fills the sidebar's "Server address" box; the viewer can always type a different one. |
+| `REFLEX_BE_BASE_URL` | No (default `http://localhost:8000`) | Pre-fills the sidebar's "Server address" box; the viewer can always type a different one — unless `IS_PROD` is true, in which case it's the only address ever used. |
+| `IS_PROD` | No (default `false`) | Set `true` only on the prod deployment. Hides the sidebar's "Server address" box and fixes it to `REFLEX_BE_BASE_URL`, so a viewer's own token can't be used to repoint prod at a different backend. |
 
-The Talentbook backend address and access token used for a given chat are
-never stored here — each visitor supplies their own in the sidebar, kept
-only in that browser session.
+The Talentbook access token used for a given chat is never stored here —
+each visitor pastes their own in the sidebar, kept only in that browser
+session. The server address isn't either, except on the prod deployment,
+where it's intentionally fixed rather than left to the viewer.
 
 `.streamlit/config.toml` holds Streamlit's own runtime settings (usage-stats
 opt-out, headless mode) — not secrets, and safe to commit as-is.

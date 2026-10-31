@@ -27,9 +27,26 @@ def _secret(name: str, default: str = "") -> str:
     return st.secrets.get(name, default)
 
 
+def _flag(name: str, default: bool = False) -> bool:
+    raw = st.secrets.get(name, None)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in ("true", "1", "yes")
+
+
+# ===== Deployment =====
+# True only on the one deployment this is meant for — set in that
+# deploy's own Streamlit Cloud Secrets, never in
+# .streamlit/secrets.toml.example or a local secrets.toml (so it
+# defaults to False everywhere else). Gates whether the sidebar lets a
+# viewer override BACKEND_BASE_URL at all — see app_mcp_chat_streamlit.py.
+IS_PROD = _flag("IS_PROD", default=False)
+
 # ===== MCP server =====
-# Only this page's pre-filled default for the sidebar's server-address box
-# — the real address is whatever's typed in there.
+# Not IS_PROD: only this page's pre-filled default for the sidebar's
+# server-address box — the real address is whatever's typed in there.
+# IS_PROD: the sidebar box is hidden and this is the only address ever
+# used, so a viewer can't repoint the app at a different backend.
 BACKEND_BASE_URL = _secret("REFLEX_BE_BASE_URL", "http://localhost:8000")
 
 # ===== LLM provider =====
