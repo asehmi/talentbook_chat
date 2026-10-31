@@ -3,7 +3,7 @@
 Trimmed from the parent Talentbook monorepo's `lib/llm/tools.py`, which also
 defines a local `TOOL_DEFINITIONS` catalog wrapping that app's own database
 services — not needed here. This chat client's tools come entirely from the
-connected MCP server instead (see `mcp_chat.py`); only the provider-neutral
+connected MCP server instead (see `mcp_st_bridge.py`); only the provider-neutral
 `ToolCall` shape and the loop guard are shared infrastructure.
 """
 

@@ -7,7 +7,7 @@ prompt, response_schema=None, tools=None, tool_handler=None)` /
 provider-specific branching beyond picking which class to instantiate.
 `tool_types.py` defines the provider-neutral `ToolCall` shape and a loop
 guard shared by all three; the tools themselves come from whatever MCP
-server is connected (see `mcp_chat.py`), not from this package.
+server is connected (see `mcp_st_bridge.py`), not from this package.
 
 `get_llm_client()` below is that "picking which class to instantiate" step,
 driven by `LLM_PROVIDER` (`.streamlit/secrets.toml`) — the caller calls it

@@ -1,8 +1,8 @@
 """Bridges Streamlit's synchronous rerun model to a running Talentbook
-backend's MCP connector, so `app_st_mcp_chat.py` can run a genuine LLM
-agentic-tool-use loop — `lib.llm.get_llm_client()` — over that connector's
-tools, with the LLM itself deciding which tools to call from the
-conversation.
+backend's MCP connector, so `app_mcp_chat_streamlit.py` can run a genuine
+LLM agentic-tool-use loop — `lib.llm.get_llm_client()` — over that
+connector's tools, with the LLM itself deciding which tools to call from
+the conversation.
 
 No default credential and nothing read from a config file: the viewer
 pastes their own `tb_pat_...` access token into the sidebar — personal or
@@ -152,19 +152,21 @@ def get_bridge(token: str, server_address: str) -> McpBridge:
 
 @st.cache_data(show_spinner=False)
 def whoami(token: str, server_address: str) -> dict | None:
-    """The account this token belongs to, if it's a personal token — one
-    real tool call, both a connectivity smoke test and something worth
-    showing the user. `None` (not an error) for an org token, which has
-    no `read:profile` scope to call `get_my_profile` with — the caller
-    falls back to a generic "connected" status rather than a name/email.
-    A real connection failure still raises, via `get_bridge`."""
+    """The account this token belongs to — name, email, and `org_key`
+    (`""` for a personal token) — via the server's own scope-free
+    `whoami` tool, present on every token kind unlike the fuller
+    `get_my_profile` (personal-only, needs `read:profile`). Also doubles
+    as a connectivity smoke test. `None` (not an error) only when talking
+    to an older server that predates this tool — the caller falls back
+    to a generic "connected" status rather than a name/email in that
+    case. A real connection failure still raises, via `get_bridge`."""
     bridge = get_bridge(token, server_address)
-    if not any(t.name == "get_my_profile" for t in bridge.tools):
+    if not any(t.name == "whoami" for t in bridge.tools):
         return None
     try:
-        return json.loads(bridge.call_tool("get_my_profile", {}))
+        return json.loads(bridge.call_tool("whoami", {}))
     except Exception as exc:
-        raise McpConnectionError(f"Connected, but get_my_profile failed: {exc}") from exc
+        raise McpConnectionError(f"Connected, but whoami failed: {exc}") from exc
 
 
 def _tool_definitions(tools: list[Tool]) -> list[dict[str, Any]]:

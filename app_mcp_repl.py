@@ -3,11 +3,11 @@ bearer token, lists its tools, and lets you call them, either one-shot from
 the command line or interactively.
 
 Usage:
-    TALENTBOOK_PAT=tb_pat_... python mcp_repl.py
-    TALENTBOOK_PAT=tb_pat_... python mcp_repl.py list
-    TALENTBOOK_PAT=tb_pat_... python mcp_repl.py call get_my_goals {}
-    TALENTBOOK_PAT=tb_pat_... python mcp_repl.py consult
-    TALENTBOOK_PAT=tb_pat_... python mcp_repl.py --server https://talentbook.example.com list
+    TALENTBOOK_PAT=tb_pat_... python app_mcp_repl.py
+    TALENTBOOK_PAT=tb_pat_... python app_mcp_repl.py list
+    TALENTBOOK_PAT=tb_pat_... python app_mcp_repl.py call get_my_goals {}
+    TALENTBOOK_PAT=tb_pat_... python app_mcp_repl.py consult
+    TALENTBOOK_PAT=tb_pat_... python app_mcp_repl.py --server https://talentbook.example.com list
 
 --server takes just the app's base URL (default http://localhost:8888) — the
 /mcp/ path (note the trailing slash — Starlette's Mount 404s without it) is

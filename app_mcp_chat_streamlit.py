@@ -1,0 +1,351 @@
+"""Chat with Talentbook — standalone, real LLM chat, not a manual tool REPL.
+
+A genuine LLM agentic-tool-use loop (`lib.llm.get_llm_client()`) over a
+running Talentbook backend's MCP connector, through `mcp_st_bridge.py` — the
+LLM itself decides which tools to call from the conversation, based on
+whatever access token the viewer pastes in.
+
+There's no default credential: the sidebar requires a viewer to paste their
+own `tb_pat_...` token (personal or org-scoped — whichever that token's own
+scopes grant decides what shows up) and a server address before the chat
+does anything. The name/token fields sit in their own form with a submit
+button — needed because a browser-autofilled credential fires no on_change
+event, so without an explicit submit action nothing would tell Streamlit
+the fields changed. An optional name field next to the token exists only to
+help the browser's own password manager label a saved token.
+
+Run with the Talentbook backend already running elsewhere (its MCP
+connector mounted at `/mcp`):
+
+    streamlit run app_mcp_chat_streamlit.py
+"""
+
+from __future__ import annotations
+
+import streamlit as st
+
+from lib.core.env import BACKEND_BASE_URL
+from lib.core.time import utcnow
+from mcp_st_bridge import McpConnectionError, get_bridge, stream_reply, whoami
+
+st.set_page_config(
+    page_title="Chat with Talentbook",
+    page_icon=":material/forum:",
+    layout="wide",
+)
+
+# The same wordmark used in Talentbook's own HTML articles/pitch decks
+# (assets/images/talentbook-name-logo-indigo-transparent.png in the main
+# repo) — st.logo() puts it at the top of the sidebar (and the app header)
+# on its own, so it has to be called early, before the sidebar is built.
+st.logo("assets/talentbook-logo.png", size="large")
+
+st.markdown("""
+<style>
+div[data-testid="stMainBlockContainer"] {
+    padding-top: 2rem;
+    padding-right: 70rem;
+    padding-left: 5rem;
+    padding-bottom: 2rem;
+}
+div[data-testid="stChatInput"] {
+    padding-top: 2rem;
+    padding-right: 60rem;
+    padding-left: 0rem;
+    padding-bottom: 2rem;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+def _safe_stream(chunks):
+    """Let a mid-stream failure (MCP connection drop, LLM API error, ...)
+    show up as part of the assistant's own message instead of crashing the
+    page — the user is mid-conversation, not loading a fresh screen."""
+    try:
+        yield from chunks
+    except Exception as exc:
+        yield f"\n\n:material/error: Something went wrong: {exc}"
+
+
+def _transcript_markdown(messages: list[dict[str, str]]) -> str:
+    """The full chat history as one Markdown document, for the Export chat
+    button — plain speaker headings so it reads naturally pasted into a
+    doc or opened as a .md file, rather than a raw JSON dump."""
+    lines = [f"# Chat with Talentbook — exported {utcnow():%Y-%m-%d %H:%M} UTC", ""]
+    for msg in messages:
+        speaker = "You" if msg["role"] == "user" else "Assistant"
+        lines += [f"## {speaker}", "", msg["content"], ""]
+    return "\n".join(lines)
+
+
+def _export_button(messages: list[dict[str, str]]) -> None:
+    st.download_button(
+        "Export chat",
+        data=_transcript_markdown(messages),
+        file_name=f"talentbook-chat-{utcnow():%Y%m%d-%H%M}.md",
+        mime="text/markdown",
+        icon=":material/download:",
+    )
+
+
+def _apply_token_switch(new_token: str, new_server_address: str) -> None:
+    """Make the typed-in (token, server_address) the active one. Appends a
+    boundary message rather than clearing history — the earlier turns stay
+    visible on purpose, so the LLM actually has to honor the boundary
+    instead of it being moot because there's nothing left to misread. No
+    confirmation needed: this message is the fix, worded for the LLM itself
+    rather than just the human, so there's nothing left for a confirmation
+    to protect against.
+
+    The boundary message itself is skipped when there's no history yet
+    (e.g. the token was changed before ever sending a message, or an
+    earlier connection attempt failed) — there's nothing for it to bound,
+    so it would just be a stray assistant message sitting above an empty
+    chat. The (token, server_address) switch below always happens
+    regardless — it's what makes a resubmitted form actually take effect,
+    not just the message."""
+    if st.session_state.chat_messages:
+        st.session_state.chat_messages.append(
+            {
+                "role": "assistant",
+                # Read back via _format_transcript on every later turn, so
+                # this is an instruction to the LLM, not just a notice to
+                # the human — everything above this line was said under a
+                # different token's scopes and may no longer hold.
+                "content": (
+                    ":material/swap_horiz: **Token changed.** Everything above this "
+                    "point was said under a different access token, possibly with "
+                    "different scopes — don't treat it as still true. Check this "
+                    "token's own available tools before answering what it can or "
+                    "can't do."
+                ),
+            }
+        )
+    st.session_state.active_token = new_token
+    st.session_state.active_server_address = new_server_address
+
+
+def _render() -> None:
+    with st.sidebar:
+        st.subheader(
+            ":material/key: Access token",
+            help=(
+                "Paste a `tb_pat_...` personal access token — personal or "
+                "org-scoped, either works. Nothing connects until one is here."
+            ),
+        )
+        # In a form so nothing connects on every keystroke, and so a
+        # browser-autofilled Name+Token pair (which fires no on_change
+        # event at all — Streamlit never sees it until something inside
+        # the form submits) has an obvious, visible action to trigger it:
+        # click Submit, or hit Enter while either field has focus, same as
+        # any other HTML form. Without the form, autofill silently left
+        # the token unset until you clicked into it and pressed Enter
+        # yourself, with nothing on the page suggesting that was needed.
+        with st.form("credentials_form", border=False):
+            # The name field is never read by this page — it exists purely
+            # so the browser's own password manager has something to label
+            # the saved credential with (autocomplete="username" pairs it
+            # with the password field below), since someone chatting as
+            # several different tokens over time would otherwise see them
+            # all saved under this one page's address with nothing to tell
+            # them apart.
+            st.text_input(
+                "Name (optional)",
+                key="token_name",
+                placeholder="e.g. TB-PAT (for read-only)",
+                autocomplete="username",
+                help="Only used to label this token in your browser's saved "
+                "passwords — never sent anywhere or read by this app.",
+            )
+            st.text_input(
+                "Token",
+                type="password",
+                key="token",
+                placeholder="tb_pat_...",
+                autocomplete="current-password",
+            )
+            authenticated = st.form_submit_button(
+                "Authenticate", icon=":material/login:", width="stretch", type="primary"
+            )
+        token = st.session_state.get("token", "")
+
+        st.subheader(":material/dns: MCP server address")
+        server_address = st.text_input(
+            "Server address",
+            key="server_address",
+            value=BACKEND_BASE_URL,
+            placeholder="http://localhost:8888",
+            help="Base URL only — the /mcp/ endpoint path is added automatically.",
+        )
+
+    st.title(":material/forum: Chat with Talentbook")
+    st.caption(
+        "A live conversation with an LLM that can read your own Talentbook data over "
+        "MCP — profile, goals, skills, OKRs, journal, canvas, and consultations — "
+        "deciding for itself which tools to call, the same way an agent like Claude "
+        "Desktop would."
+    )
+
+    server_address = server_address.strip()
+    if not token or not server_address:
+        st.info(
+            "Enter a Talentbook access token and server address in the sidebar "
+            "to start chatting — issue a token from the Connected Agents page.",
+            icon=":material/key:",
+        )
+        st.stop()
+
+    if authenticated:
+        # get_bridge/whoami are st.cache_resource/st.cache_data, keyed on
+        # (token, server_address) — without this, clicking Authenticate
+        # with the exact same token and server address (e.g. retrying
+        # after the backend's MCP session idle-timed-out or the backend
+        # restarted) would just hand back the same cached bridge and its
+        # now-dead session, forever, since nothing about the cache key
+        # changed. Clearing on every click makes Authenticate double as
+        # an explicit reconnect, not just a credential-switch detector.
+        get_bridge.clear(token, server_address)
+        whoami.clear(token, server_address)
+
+    if "chat_messages" not in st.session_state:
+        st.session_state.chat_messages = []
+    if "active_token" not in st.session_state:
+        st.session_state.active_token = None
+        st.session_state.active_server_address = None
+
+    if st.session_state.active_token is None:
+        # First-ever connection this session — nothing to clear.
+        st.session_state.active_token = token
+        st.session_state.active_server_address = server_address
+    elif (token, server_address) != (
+        st.session_state.active_token,
+        st.session_state.active_server_address,
+    ):
+        _apply_token_switch(token, server_address)
+
+    active_token = st.session_state.active_token
+    active_server_address = st.session_state.active_server_address
+
+    try:
+        bridge = get_bridge(active_token, active_server_address)
+        me = whoami(active_token, active_server_address)
+    except McpConnectionError as exc:
+        st.error(str(exc), icon=":material/link_off:")
+        st.stop()
+
+    # get_my_profile is personal-only — present in the tool catalog iff
+    # this token carries read:profile, which an org-scoped token can
+    # never be granted (see lib/core/models.py's MCP_ORG_SCOPES) — so its
+    # presence is a direct, reliable personal-vs-org signal, independent
+    # of whether whoami() below found an identity to report at all.
+    is_personal = any(t.name == "get_my_profile" for t in bridge.tools)
+
+    with st.container(horizontal=True, vertical_alignment="center"):
+        if me is not None:
+            # whoami's server-side tool reports the real account either
+            # way — this token's own owner for a personal token, the
+            # issuing admin's for an org one — so the same "Connected as
+            # NAME (EMAIL)" shape now applies to both, not just personal.
+            display_name = me.get("name") or me.get("email", "unknown")
+            status = (
+                f":material/link: Connected as **{display_name}** (`{me.get('email', '?')}`) "
+                f"— {len(bridge.tools)} tool(s) available"
+            )
+        else:
+            # Only when talking to a server old enough to predate the
+            # whoami tool — no identity to report, just the tool count.
+            status = f":material/link: Connected — {len(bridge.tools)} tool(s) available"
+        st.caption(status)
+        with st.container(horizontal=True, horizontal_alignment="right"):
+            # A placeholder rather than rendering the button here directly
+            # — at this point in the script we don't know yet whether
+            # this run ends with any messages (a prompt sent this run can
+            # still fail, and a fresh chat has none at all), so there's
+            # nothing valid to decide "show it or not" with yet. Filled in
+            # once that's known, at the end of the function.
+            export_placeholder = st.empty()
+            if st.button("New chat", icon=":material/add_comment:"):
+                st.session_state.chat_messages = []
+                st.rerun()
+
+    # Two flavors, picked below by `is_personal` — each tool catalog
+    # covers different data, so the example questions have to too.
+    # "Tasks you can perform" leads both: whichever kind of token this
+    # is, it's the one question that always makes sense before the
+    # viewer knows what's actually on offer.
+    PERSONAL_SUGGESTIONS = {
+        ":material/help: Tasks you can perform": (
+            "What kinds of things can you help me with?"
+        ),
+        ":material/flag: My current goals": (
+            "What are my current goals, and which one should I focus on next?"
+        ),
+        ":material/target: My biggest skill gaps": "Where are my biggest skill gaps right now?",
+        ":material/edit_note: Recent journal themes": (
+            "Summarize what I've been writing about in my journal lately."
+        ),
+        ":material/dashboard: My canvas, explained": "Walk me through my Business Model You canvas.",
+    }
+    ORG_SUGGESTIONS = {
+        ":material/help: Tasks you can perform": (
+            "What kinds of things can you help me with for this organisation?"
+        ),
+        ":material/groups: Our org roster": "Give me an overview of our organisation's roster.",
+        ":material/target: Role baselines": (
+            "What role baselines do we have defined, and what do they require?"
+        ),
+        ":material/work: Work-job templates": (
+            "Walk me through our work-job templates and the skills they need."
+        ),
+    }
+
+    # In the sidebar, not the main column, and always rendered rather than
+    # only before the first message — a plain main-column widget would
+    # disappear the moment chat_messages stops being empty (it did, before
+    # this change), which both hides a feature that's still useful mid-
+    # conversation and means its on-screen presence depends on history
+    # state surviving reruns exactly right. The sidebar has no such
+    # condition to get wrong.
+    with st.sidebar:
+        st.subheader(":material/lightbulb: Example questions")
+        suggestions = PERSONAL_SUGGESTIONS if is_personal else ORG_SUGGESTIONS
+        selected = st.pills(
+            "Try asking:",
+            list(suggestions.keys()),
+            label_visibility="collapsed",
+            # st.pills has no "fire once" mode — its selection otherwise
+            # stays stuck after being read once, re-sending the same
+            # question on every later rerun. A key that changes with the
+            # message count makes each send start a fresh, unselected
+            # widget instead of carrying the old selection forward.
+            key=f"suggestion_pills_{len(st.session_state.chat_messages)}",
+        )
+    suggested_prompt = suggestions[selected] if selected else None
+
+    typed = st.chat_input(
+        "Ask about your goals, skills, OKRs, journal, or canvas…",
+        submit_mode="disable",
+    )
+    prompt = typed or suggested_prompt
+
+    messages = st.session_state.chat_messages
+    for msg in messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    if prompt:
+        messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        with st.chat_message("assistant"):
+            reply = st.write_stream(_safe_stream(stream_reply(messages, bridge)))
+            messages.append({"role": "assistant", "content": reply})
+
+    with export_placeholder:
+        if messages:
+            _export_button(messages)
+
+
+_render()

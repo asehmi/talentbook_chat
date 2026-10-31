@@ -5,7 +5,7 @@ caller needs — same shape every provider client in this package shares, so
 switching provider is a one-line change in `get_llm_client()`.
 
 Pass `tools` (built from whatever MCP server is connected — see
-`mcp_chat.py`) and `tool_handler` and the call runs an agentic loop —
+`mcp_st_bridge.py`) and `tool_handler` and the call runs an agentic loop —
 Anthropic's own `tools=[...]` param and `tool_use`/`tool_result` content
 blocks, no manual response parsing needed for this provider. Uses a manual
 `tenacity.Retrying()` loop per call rather than the `@retry` decorator, so
