@@ -1,0 +1,13 @@
+# Streamlit app configuration — committed, unlike secrets.toml. Keys
+# actually read as secrets (API keys, the backend address) live in
+# secrets.toml instead; this file is for Streamlit's own runtime behavior.
+
+[browser]
+# Don't prompt for/send the anonymous usage-stats opt-in — this is a fixed
+# single-purpose app, not something end users should be asked about.
+gatherUsageStats = false
+
+[server]
+# Local/self-hosted runs shouldn't try to auto-open a browser tab; Streamlit
+# Cloud ignores this and manages its own serving regardless.
+headless = true

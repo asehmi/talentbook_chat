@@ -1,0 +1,34 @@
+# ===== Chat UI =====
+streamlit>=1.66.0
+
+# ===== Config =====
+# Config/secrets come from Streamlit's own st.secrets (.streamlit/secrets.toml
+# locally, Streamlit Cloud's Secrets settings when deployed) — no .env
+# loader needed.
+pydantic>=2.11.9
+
+# ===== Retry =====
+# Manual Retrying() loop for the LLM call's retry + growing-token-budget
+# pattern (lib/llm/anthropic_client.py) — not the @retry decorator, since a
+# fresh Retrying() instance is built locally per call.
+tenacity>=8.2
+
+# ===== LLM providers =====
+# lib.llm.get_llm_client() picks one by LLM_PROVIDER; all three are listed
+# so switching provider via secrets.toml never needs a requirements change.
+anthropic>=0.40
+google-genai>=0.3
+# OpenRouter has no official SDK; lib/llm/openrouter_client.py calls its
+# OpenAI-compatible REST API directly over plain httpx.
+httpx>=0.27
+
+# ===== MCP client =====
+# Both app_st_mcp_chat.py and mcp_repl.py are MCP *clients* of a running
+# Talentbook backend's connector — the official mcp SDK (ClientSession,
+# Streamable-HTTP transport) plus httpx2, the HTTP client its transport is
+# built on.
+mcp>=1.0
+httpx2>=2.0
+# mcp_repl.py's CLI (list/call/repl/consult subcommands) — not used by
+# app_st_mcp_chat.py.
+typer>=0.27.0
