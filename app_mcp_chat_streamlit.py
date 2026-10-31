@@ -14,6 +14,12 @@ without an explicit submit action nothing would tell Streamlit the fields
 changed. An optional name field next to the token exists only to help the
 browser's own password manager label a saved token.
 
+A second page, Instructions, walks a new visitor through getting a token
+and trying the chat. Both pages are registered with `st.navigation(...,
+position="hidden")` so Streamlit's own page list never appears — the only
+way between them is the page_link each one renders itself, placed exactly
+where that page wants it (the sidebar's bottom for Chat -> Instructions).
+
 The MCP server address is normally also editable in the sidebar (prefilled
 from `BACKEND_BASE_URL`), so the same deploy can be pointed at a different
 backend. On the prod deployment (`IS_PROD` secret), that box is hidden and
@@ -85,6 +91,15 @@ def _transcript_markdown(messages: list[dict[str, str]]) -> str:
     return "\n".join(lines)
 
 
+def _sidebar_instructions_link() -> None:
+    """Called from both the token-gate's early-stop path and the bottom of
+    the connected sidebar — a new visitor with no token yet still needs to
+    find this before they can get one, so it can't live only behind the
+    Example questions block, which needs a live connection to populate."""
+    st.divider()
+    st.page_link(_instructions_page, icon=":material/menu_book:")
+
+
 def _export_button(messages: list[dict[str, str]]) -> None:
     st.download_button(
         "Export chat",
@@ -132,7 +147,7 @@ def _apply_token_switch(new_token: str, new_server_address: str) -> None:
     st.session_state.active_server_address = new_server_address
 
 
-def _render() -> None:
+def _render_chat() -> None:
     with st.sidebar:
         st.subheader(
             ":material/key: Access token",
@@ -215,6 +230,8 @@ def _render() -> None:
             f"{prompt} — issue a token from the Connected Agents page.",
             icon=":material/key:",
         )
+        with st.sidebar:
+            _sidebar_instructions_link()
         st.stop()
 
     if authenticated:
@@ -342,6 +359,7 @@ def _render() -> None:
             # widget instead of carrying the old selection forward.
             key=f"suggestion_pills_{len(st.session_state.chat_messages)}",
         )
+        _sidebar_instructions_link()
     suggested_prompt = suggestions[selected] if selected else None
 
     typed = st.chat_input(
@@ -368,4 +386,100 @@ def _render() -> None:
             _export_button(messages)
 
 
-_render()
+def _render_instructions() -> None:
+    with st.sidebar:
+        st.page_link(_chat_page, icon=":material/forum:")
+
+    st.title(":material/menu_book: Instructions")
+    st.caption("Everything you need to get a token and start chatting with your own Talentbook data.")
+
+    st.subheader("1. Get two access tokens")
+    st.markdown(
+        "Log into your own Talentbook account, then open "
+        f"[Connected Agents]({BACKEND_BASE_URL.rstrip('/')}/app/connected-agents). "
+        "This page issues two different kinds of token, and there's no reason "
+        "not to create both now — they cover different data, and later steps "
+        "here use each one:\n\n"
+        "- **Personal token** (under *Your tokens*) — your own goals, skills, "
+        "OKRs, journal, canvas, and consultations.\n"
+        "- **Org token** (under *Org Integrations*) — your organisation's "
+        "roster, role baselines, and work-job templates. Not part of a "
+        "company org? Talentbook still gives you an \"org of one\" scoped to "
+        "just your own catalog, so this applies to you too.\n\n"
+        "For each one, click **Create token**, give it a name, and check the "
+        "scopes you want it to have — nothing is selected by default, and the "
+        "token needs at least one. Copy the token (`tb_pat_...`) as soon as "
+        "it's shown — it isn't shown again, and revoking it later is free if "
+        "you're just testing."
+    )
+
+    st.subheader("2. Connect")
+    st.markdown(
+        "Paste a name and one of your tokens into this app's sidebar and "
+        "click **Authenticate**. You should see *\"Connected as YOU (your "
+        "email) — N tool(s) available\"* above the chat box. You can switch "
+        "which token is active anytime — paste the other one in and click "
+        "**Authenticate** again; your chat history stays, and the assistant "
+        "is told not to treat anything said before the switch as still true "
+        "under the new token's scopes."
+    )
+
+    st.subheader("3. Set up your skills inventory first")
+    st.markdown(
+        "The example prompt below compares two canvases, so build at least "
+        "one in Talentbook before trying it. The usual way is onboarding: go "
+        "through it and rate your proficiency across the skill taxonomy, "
+        "then save it as a canvas (for example, **Current Role**). Create a "
+        "second canvas for a different snapshot — a target role, a future "
+        "scenario, or a re-rating after some time — so you have two to "
+        "compare (for example, **Target Role**)."
+    )
+    st.markdown(
+        "You don't have to go through onboarding by hand, though — as an "
+        "admin of your own catalog, the same built-in designer is reachable "
+        "from chat. Connect with your **Org token** (with read and write "
+        "scopes on organisation roles and work-job templates), then ask:"
+    )
+    st.markdown(
+        "- *\"Show me what skills catalogs are available?\"* — lists the "
+        "catalogs you can set yourself up against.\n"
+        "- *\"Set me up as 'Solo Entrepreneur'\"* — or name one from the list "
+        "the previous answer gave you.\n"
+        "- *\"Show me the skills targets, and set all my critical skills as "
+        "tracked.\"*"
+    )
+
+    st.subheader("4. Try this prompt")
+    st.markdown(
+        "Switch back to your **Personal token** first — with all its Read "
+        "scopes checked (profile, goals, skills, OKRs, journal, canvas, "
+        "consultations) — since this prompt reads across your own canvases, "
+        "not organisation data."
+    )
+    st.code(
+        "Compare the CANVAS-1 and CANVAS-2 canvases and tell me what skills I "
+        "need to drop, adopt anew, and work on. Give me work strategies for "
+        "addressing the gaps in proficiency, and perhaps skills that are deemed "
+        "not critical that I should track nonetheless. Also advise on "
+        "consultations that I can take to help close the gap.",
+        language=None,
+    )
+    st.caption("Swap CANVAS-1 and CANVAS-2 for your own canvas names.")
+
+    st.subheader("5. Keep your tokens safe")
+    st.markdown(
+        "Treat each one like a password — don't share it, and revoke it from "
+        "Connected Agents once you're done testing."
+    )
+
+
+_chat_page = st.Page(
+    _render_chat, title="Chat with Talentbook", icon=":material/forum:", default=True
+)
+_instructions_page = st.Page(
+    _render_instructions, title="Instructions", icon=":material/menu_book:"
+)
+# position="hidden" suppresses Streamlit's own page list (which would
+# otherwise sit at the top of the sidebar, ahead of the credentials form) —
+# each page links to the other itself, exactly where that page wants it.
+st.navigation([_chat_page, _instructions_page], position="hidden").run()
