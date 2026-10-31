@@ -2,6 +2,45 @@
 # actually read as secrets (API keys, the backend address) live in
 # secrets.toml instead; this file is for Streamlit's own runtime behavior.
 
+# Anthropic-inspired Streamlit Theme
+# Uses Space Grotesk (similar to Söhne) with Space Mono for code
+# Anthropic's design: warm, intellectual, calm with signature terracotta/coral accent
+
+[theme]
+primaryColor = "#D97757"
+backgroundColor = "#FFFDFB"
+secondaryBackgroundColor = "#F5F0EB"
+codeBackgroundColor = "#F0EBE6"
+textColor = "#3D3929"
+linkColor = "#D97757"
+borderColor = "#E5E0DB"
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "12px"
+buttonRadius = "full"
+font = "'Space Grotesk':https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
+codeFont = "'Space Mono':https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap"
+codeFontSize = "0.8rem"
+baseFontSize = 16
+baseFontWeight = 400
+headingFontWeights = [600, 500, 500, 500, 500, 500]
+headingFontSizes = ["42px", "32px", "24px", "20px", "16px", "14px"]
+linkUnderline = false
+chartCategoricalColors = ["#D97757", "#C4A77D", "#8B9A82", "#6B8E96", "#9B8AA6", "#E8B4A0", "#7D8471"]
+
+# Anthropic color palette (warm, natural tones)
+orangeColor = "#D97757"
+greenColor = "#8B9A82"
+blueColor = "#6B8E96"
+yellowColor = "#C4A77D"
+
+[theme.sidebar]
+backgroundColor = "#F5F0EB"
+secondaryBackgroundColor = "#EBE6E1"
+codeBackgroundColor = "#E6E1DC"
+borderColor = "#DDD8D3"
+dataframeHeaderBackgroundColor = "#E6E1DC"
+
 [browser]
 # Don't prompt for/send the anonymous usage-stats opt-in — this is a fixed
 # single-purpose app, not something end users should be asked about.
