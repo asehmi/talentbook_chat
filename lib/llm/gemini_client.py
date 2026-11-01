@@ -48,13 +48,35 @@ def _log_retry_attempt(retry_state) -> None:
     logger.debug(f"[LLM] attempt {retry_state.attempt_number} failed, retrying...")
 
 
+# Keys the MCP server's (and FastMCP/pydantic's) JSON Schema output carries
+# that Gemini's stricter Schema proto rejects outright with "Unknown name
+# ... Cannot find field" — unlike Anthropic/OpenRouter, which both just
+# ignore extra JSON-Schema keywords they don't need. Stripped recursively
+# since any nested object/array param carries its own copy.
+_GEMINI_UNSUPPORTED_SCHEMA_KEYS = {"additionalProperties", "$schema", "$id", "$defs", "$ref"}
+
+
+def _sanitize_schema_for_gemini(schema: Any) -> Any:
+    if isinstance(schema, dict):
+        return {
+            k: _sanitize_schema_for_gemini(v)
+            for k, v in schema.items()
+            if k not in _GEMINI_UNSUPPORTED_SCHEMA_KEYS
+        }
+    if isinstance(schema, list):
+        return [_sanitize_schema_for_gemini(v) for v in schema]
+    return schema
+
+
 def _to_gemini_tool(definitions: list[dict[str, Any]]):
     from google.genai import types
 
     return types.Tool(
         function_declarations=[
             types.FunctionDeclaration(
-                name=d["name"], description=d["description"], parameters=d["parameters"]
+                name=d["name"],
+                description=d["description"],
+                parameters=_sanitize_schema_for_gemini(d["parameters"]),
             )
             for d in definitions
         ]
