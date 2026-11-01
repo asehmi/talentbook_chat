@@ -35,6 +35,7 @@ connector mounted at `/mcp`):
 from __future__ import annotations
 
 import streamlit as st
+from streamlit import session_state as state
 
 from lib.core.env import IS_PROD, BACKEND_BASE_URL, FRONTEND_BASE_URL
 from lib.core.time import utcnow
@@ -126,8 +127,8 @@ def _apply_token_switch(new_token: str, new_server_address: str) -> None:
     chat. The (token, server_address) switch below always happens
     regardless — it's what makes a resubmitted form actually take effect,
     not just the message."""
-    if st.session_state.chat_messages:
-        st.session_state.chat_messages.append(
+    if state.chat_messages:
+        state.chat_messages.append(
             {
                 "role": "assistant",
                 # Read back via _format_transcript on every later turn, so
@@ -143,11 +144,40 @@ def _apply_token_switch(new_token: str, new_server_address: str) -> None:
                 ),
             }
         )
-    st.session_state.active_token = new_token
-    st.session_state.active_server_address = new_server_address
+    state.active_token = new_token
+    state.active_server_address = new_server_address
 
 
 def _render_chat() -> None:
+    # Streamlit clears a widget's session_state entry on any run where
+    # that widget isn't instantiated. The credentials form and the server
+    # address box below only render on *this* page — so a round trip
+    # through the Instructions page (which never renders them) wipes
+    # both, and returning here used to re-trigger the "enter a token"
+    # gate below even though the connection, and the chat history under
+    # it, was still live. `chat_messages`/`active_token` themselves are
+    # plain session_state, not widget state, so they're never touched by
+    # this — only the form fields lose their value, and the gate was the
+    # thing hiding the still-intact history behind them. Re-seed both
+    # keys from the already-active connection before the widgets below
+    # are created, so a return trip shows what's actually connected
+    # instead of an empty form.
+    if "chat_messages" not in state:
+        state.chat_messages = []
+    if "active_token" not in state:
+        state.active_token = None
+        state.active_server_address = None
+    if "token" not in state and state.active_token:
+        state.token = state.active_token
+    if "server_address" not in state:
+        state.server_address = state.active_server_address or BACKEND_BASE_URL
+    # token_name has no other state backing it (it's never read for
+    # anything but the browser's own password manager — see the form
+    # below), so without its own persisted copy it would reappear blank
+    # after a round trip even once token/server_address were fixed.
+    if "token_name" not in state and state.get("active_token_name"):
+        state.token_name = state.active_token_name
+
     with st.sidebar:
         st.subheader(
             ":material/key: Access token",
@@ -190,7 +220,9 @@ def _render_chat() -> None:
             authenticated = st.form_submit_button(
                 "Authenticate", icon=":material/login:", width="stretch", type="primary"
             )
-        token = st.session_state.get("token", "")
+        token = state.get("token", "")
+        if state.get("token_name"):
+            state.active_token_name = state.token_name
 
         # On the prod deployment (IS_PROD secret), the server address is
         # fixed to BACKEND_BASE_URL and never shown — a viewer pasting in
@@ -205,7 +237,6 @@ def _render_chat() -> None:
             server_address = st.text_input(
                 "Server address",
                 key="server_address",
-                value=BACKEND_BASE_URL,
                 placeholder="http://localhost:8888",
                 help="Base URL only — the /mcp/ endpoint path is added automatically.",
             )
@@ -246,24 +277,18 @@ def _render_chat() -> None:
         get_bridge.clear(token, server_address)
         whoami.clear(token, server_address)
 
-    if "chat_messages" not in st.session_state:
-        st.session_state.chat_messages = []
-    if "active_token" not in st.session_state:
-        st.session_state.active_token = None
-        st.session_state.active_server_address = None
-
-    if st.session_state.active_token is None:
+    if state.active_token is None:
         # First-ever connection this session — nothing to clear.
-        st.session_state.active_token = token
-        st.session_state.active_server_address = server_address
+        state.active_token = token
+        state.active_server_address = server_address
     elif (token, server_address) != (
-        st.session_state.active_token,
-        st.session_state.active_server_address,
+        state.active_token,
+        state.active_server_address,
     ):
         _apply_token_switch(token, server_address)
 
-    active_token = st.session_state.active_token
-    active_server_address = st.session_state.active_server_address
+    active_token = state.active_token
+    active_server_address = state.active_server_address
 
     try:
         bridge = get_bridge(active_token, active_server_address)
@@ -304,7 +329,7 @@ def _render_chat() -> None:
             # once that's known, at the end of the function.
             export_placeholder = st.empty()
             if st.button("New chat", icon=":material/add_comment:"):
-                st.session_state.chat_messages = []
+                state.chat_messages = []
                 st.rerun()
 
     # Two flavors, picked below by `is_personal` — each tool catalog
@@ -357,7 +382,7 @@ def _render_chat() -> None:
             # question on every later rerun. A key that changes with the
             # message count makes each send start a fresh, unselected
             # widget instead of carrying the old selection forward.
-            key=f"suggestion_pills_{len(st.session_state.chat_messages)}",
+            key=f"suggestion_pills_{len(state.chat_messages)}",
         )
         _sidebar_instructions_link()
     suggested_prompt = suggestions[selected] if selected else None
@@ -368,7 +393,7 @@ def _render_chat() -> None:
     )
     prompt = typed or suggested_prompt
 
-    messages = st.session_state.chat_messages
+    messages = state.chat_messages
     for msg in messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
