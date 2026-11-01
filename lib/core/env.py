@@ -73,3 +73,27 @@ GEMINI_API_KEY = _secret("GOOGLE_API_KEY") or _secret("GEMINI_API_KEY")
 OPENROUTER_API_KEY = _secret("OPENROUTER_API_KEY") or _secret("OR_API_KEY")
 
 LOG_LEVEL = _secret("LOG_LEVEL", "info").lower()
+
+
+def _redact(secret: str) -> str:
+    """Enough of a secret to recognise it's the right one, never enough to
+    reuse it."""
+    if not secret:
+        return "(not set)"
+    if len(secret) <= 8:
+        return "*" * len(secret)
+    return f"{secret[:4]}...{secret[-4:]} (len={len(secret)})"
+
+
+# Printed once per process start (this module is only ever imported once per
+# Streamlit run) so a Streamlit Cloud log tail shows exactly which backend,
+# frontend, and provider a given deploy is actually using — config here
+# comes from Cloud Secrets, not a file in the repo, so it isn't otherwise
+# visible without this.
+print(f"[env] LLM_PROVIDER={LLM_PROVIDER}")
+print(f"[env] IS_PROD={IS_PROD}")
+print(f"[env] REFLEX_BE_BASE_URL={BACKEND_BASE_URL}")
+print(f"[env] REFLEX_FE_BASE_URL={FRONTEND_BASE_URL}")
+print(f"[env] ANTHROPIC_API_KEY={_redact(ANTHROPIC_API_KEY)}")
+print(f"[env] GEMINI_API_KEY={_redact(GEMINI_API_KEY)}")
+print(f"[env] OPENROUTER_API_KEY={_redact(OPENROUTER_API_KEY)}")
