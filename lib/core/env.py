@@ -89,11 +89,14 @@ def _redact(secret: str) -> str:
 # Streamlit run) so a Streamlit Cloud log tail shows exactly which backend,
 # frontend, and provider a given deploy is actually using — config here
 # comes from Cloud Secrets, not a file in the repo, so it isn't otherwise
-# visible without this.
-print(f"[env] LLM_PROVIDER={LLM_PROVIDER}")
-print(f"[env] IS_PROD={IS_PROD}")
-print(f"[env] REFLEX_BE_BASE_URL={BACKEND_BASE_URL}")
-print(f"[env] REFLEX_FE_BASE_URL={FRONTEND_BASE_URL}")
-print(f"[env] ANTHROPIC_API_KEY={_redact(ANTHROPIC_API_KEY)}")
-print(f"[env] GEMINI_API_KEY={_redact(GEMINI_API_KEY)}")
-print(f"[env] OPENROUTER_API_KEY={_redact(OPENROUTER_API_KEY)}")
+# visible without this. flush=True matters here: stdout is fully (not
+# line-) buffered once it isn't a TTY, which is how Streamlit Cloud's own
+# log viewer sees it, so without an explicit flush these few short lines
+# can sit in the buffer and never reach the log tail at all.
+print(f"[env] LLM_PROVIDER={LLM_PROVIDER}", flush=True)
+print(f"[env] IS_PROD={IS_PROD}", flush=True)
+print(f"[env] REFLEX_BE_BASE_URL={BACKEND_BASE_URL}", flush=True)
+print(f"[env] REFLEX_FE_BASE_URL={FRONTEND_BASE_URL}", flush=True)
+print(f"[env] ANTHROPIC_API_KEY={_redact(ANTHROPIC_API_KEY)}", flush=True)
+print(f"[env] GEMINI_API_KEY={_redact(GEMINI_API_KEY)}", flush=True)
+print(f"[env] OPENROUTER_API_KEY={_redact(OPENROUTER_API_KEY)}", flush=True)

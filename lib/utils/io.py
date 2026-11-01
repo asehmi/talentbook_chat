@@ -38,6 +38,7 @@ class ConsoleIO:
         print(
             f"{colour}[{stamp}] {level.upper():<7}{_RESET} {self.name}: {message}",
             file=stream,
+            flush=True,
         )
 
     def debug(self, message: str) -> None:
