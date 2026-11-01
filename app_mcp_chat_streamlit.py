@@ -373,7 +373,21 @@ def _render_chat() -> None:
     with st.sidebar:
         st.subheader(":material/lightbulb: Example questions")
         suggestions = PERSONAL_SUGGESTIONS if is_personal else ORG_SUGGESTIONS
-        selected = st.pills(
+        pills_key = f"suggestion_pills_{len(state.chat_messages)}"
+
+        def _apply_suggestion() -> None:
+            # Runs as st.pills' on_change callback — before this rerun's
+            # script body executes — so state.pending_prompt is already
+            # set by the time it's read below. Reading st.pills' own
+            # return value directly used to need an extra click: Streamlit
+            # schedules the rerun as soon as the click lands, but a value
+            # read inline further down the script isn't guaranteed to
+            # reflect that same click until the callback has run first.
+            picked = state.get(pills_key)
+            if picked:
+                state.pending_prompt = suggestions[picked]
+
+        st.pills(
             "Try asking:",
             list(suggestions.keys()),
             label_visibility="collapsed",
@@ -382,10 +396,11 @@ def _render_chat() -> None:
             # question on every later rerun. A key that changes with the
             # message count makes each send start a fresh, unselected
             # widget instead of carrying the old selection forward.
-            key=f"suggestion_pills_{len(state.chat_messages)}",
+            key=pills_key,
+            on_change=_apply_suggestion,
         )
         _sidebar_instructions_link()
-    suggested_prompt = suggestions[selected] if selected else None
+    suggested_prompt = state.pop("pending_prompt", None)
 
     typed = st.chat_input(
         "Ask about your goals, skills, OKRs, journal, or canvas…",
