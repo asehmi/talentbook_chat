@@ -13,6 +13,20 @@ Tool-calling requires streaming on OpenRouter's API even for a
 "non-streaming" caller — `generate_response` routes through the same
 streaming/tool-call loop as `generate_response_stream` whenever `tools` is
 given.
+
+No `cache_control` blocks here, unlike `AnthropicClient` — OpenRouter is a
+pass-through proxy, so whatever caching happens is whichever the *routed*
+model's own backend does: `DEFAULT_MODEL` below is a Gemini model, which
+gets the same automatic implicit caching Gemini always does (see
+`gemini_client.py`'s note) with no OpenRouter-side opt-in. If `DEFAULT_MODEL`
+is ever pointed at an Anthropic model instead, OpenRouter does support the
+same `cache_control: {"type": "ephemeral"}` breakpoints as the direct
+Anthropic API, placed on a message's content block rather than passed as a
+top-level param — not added here since it would silently do nothing (at
+best) for the Gemini model this app actually runs by default. Either way,
+the one thing that's provider-agnostic and already true below: `system`
+and `tools` are fixed and sent first on every call, which is the
+precondition any of these caching schemes need to ever hit.
 """
 
 from __future__ import annotations

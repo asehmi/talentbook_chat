@@ -51,11 +51,29 @@ def _to_anthropic_tools(definitions: list[dict[str, Any]]) -> list[dict[str, Any
     API requires the schema under `input_schema` specifically — confirmed
     live: passing `parameters` as-is is silently accepted by the SDK's
     typing but rejected by the API itself with `tools.0.custom.input_schema:
-    Field required`."""
-    return [
+    Field required`.
+
+    The last tool carries a `cache_control` breakpoint: the full catalog
+    (every tool the connected token's scopes expose, full JSON schema) is
+    identical on every round of the agentic loop within a turn, and across
+    turns in the same session, so it's the single biggest cacheable block
+    in this app's call pattern."""
+    anthropic_tools = [
         {"name": d["name"], "description": d["description"], "input_schema": d["parameters"]}
         for d in definitions
     ]
+    if anthropic_tools:
+        anthropic_tools[-1]["cache_control"] = {"type": "ephemeral"}
+    return anthropic_tools
+
+
+def _to_anthropic_system(system_instruction: str) -> list[dict[str, Any]]:
+    """`system` as a one-block content list rather than a plain string, so
+    it can carry its own `cache_control` breakpoint — `SYSTEM_INSTRUCTION`
+    in `mcp_st_bridge.py` is a fixed constant, never built per-call, so
+    this block is always byte-identical and always a cache hit after the
+    first call of a session."""
+    return [{"type": "text", "text": system_instruction, "cache_control": {"type": "ephemeral"}}]
 
 
 def _max_tokens_for_attempt(attempt_number: int) -> int:
@@ -118,6 +136,7 @@ class AnthropicClient:
             )
 
         anthropic_tools = _to_anthropic_tools(tools) if tools else None
+        anthropic_system = _to_anthropic_system(system_instruction)
 
         retrying = Retrying(
             stop=stop_after_attempt(3),
@@ -141,7 +160,7 @@ class AnthropicClient:
                         "model": self.model_name,
                         "max_tokens": max_tokens,
                         "thinking": {"type": "adaptive"},
-                        "system": system_instruction,
+                        "system": anthropic_system,
                         "messages": messages,
                     }
                     if anthropic_tools:
@@ -221,6 +240,7 @@ class AnthropicClient:
         """
         client = self._anthropic.Anthropic(api_key=self.api_key)
         anthropic_tools = _to_anthropic_tools(tools) if tools else None
+        anthropic_system = _to_anthropic_system(system_instruction)
         messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
         loop_guard = ToolCallLoopGuard()
 
@@ -229,7 +249,7 @@ class AnthropicClient:
                 "model": self.model_name,
                 "max_tokens": BASE_MAX_TOKENS,
                 "thinking": {"type": "adaptive"},
-                "system": system_instruction,
+                "system": anthropic_system,
                 "messages": messages,
             }
             if anthropic_tools:

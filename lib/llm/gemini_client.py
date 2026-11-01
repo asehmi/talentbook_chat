@@ -11,6 +11,20 @@ function-calling shape.
 
 `ToolCallLoopGuard` (`lib/llm/tool_types.py`) caps rounds and detects the
 same tool call repeating back to back.
+
+No `cache_control`-equivalent call here, unlike `AnthropicClient` — Gemini's
+2.5+/3.x models (this one included) apply prompt caching implicitly and
+automatically server-side: no SDK parameter to set, it just takes effect
+once a request's prefix is long enough and byte-identical to a recent call.
+The call shape below already satisfies that for free: `system_instruction`
+and `tools` are both passed via `config`, which `google-genai` always places
+ahead of `contents` on the wire, and both are the same fixed
+`SYSTEM_INSTRUCTION`/tool catalog on every round of the agentic loop and
+every turn of a session (see `mcp_st_bridge.py`). Google also offers
+*explicit* caching (`client.caches.create()`, a `CachedContent` object you
+manage with your own TTL and pay hourly storage for) — deliberately not
+used here; it's real added complexity for a model (`flash-lite`/cheap tier)
+where the gap over implicit caching isn't worth it.
 """
 
 from __future__ import annotations
