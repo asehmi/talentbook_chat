@@ -44,7 +44,7 @@ from mcp_st_bridge import McpConnectionError, get_bridge, stream_reply, whoami
 st.set_page_config(
     page_title="Chat with Talentbook",
     page_icon=":material/forum:",
-    layout="wide",
+    layout="centered",
 )
 
 # The same wordmark used in Talentbook's own HTML articles/pitch decks
@@ -57,14 +57,14 @@ st.markdown("""
 <style>
 div[data-testid="stMainBlockContainer"] {
     padding-top: 2rem;
-    padding-right: 70rem;
-    padding-left: 5rem;
+    /* padding-right: 70rem; */
+    /* padding-left: 5rem; */
     padding-bottom: 2rem;
 }
 div[data-testid="stChatInput"] {
     padding-top: 2rem;
-    padding-right: 60rem;
-    padding-left: 0rem;
+    /* padding-right: 60rem; */
+    /* padding-left: 0rem; */
     padding-bottom: 2rem;
 }
 </style>
