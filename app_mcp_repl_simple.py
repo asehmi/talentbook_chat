@@ -28,7 +28,7 @@ from contextlib import asynccontextmanager
 
 import httpx2
 import typer
-from mcp import ClientSession
+from mcp import ClientSession, MCPError
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import Tool
 
@@ -42,6 +42,42 @@ async def _connect(url: str, token: str):
         async with ClientSession(read, write) as session:
             await session.initialize()
             yield session
+
+
+def _mcp_error_message(exc: BaseException) -> str | None:
+    """Unwrap a (possibly nested) ExceptionGroup to find the underlying
+    MCPError and build an actionable one-line message. The SDK's own
+    streamable_http client collapses *any* non-2xx HTTP response (401,
+    403, 429, 500...) into a generic "Server returned an error response"
+    with no distinguishing status code reaching this far — so this can't
+    name the exact cause, only the likely one (a bad token, since that's
+    by far the most common way to hit this)."""
+    if isinstance(exc, MCPError):
+        return (
+            f"The server rejected the connection ({exc.message}). This usually "
+            "means --token/TALENTBOOK_PAT is invalid, expired, or revoked. "
+            "Check Connected Agents in the app and issue a fresh one if needed."
+        )
+    if isinstance(exc, BaseExceptionGroup):
+        for sub in exc.exceptions:
+            message = _mcp_error_message(sub)
+            if message:
+                return message
+    return None
+
+
+def _run_async(coro) -> None:
+    """Run an MCP command's coroutine, turning a connection/auth failure
+    into one clean line instead of the SDK's own deeply nested
+    ExceptionGroup traceback (session.initialize() raises inside two
+    layers of anyio TaskGroup — streamable_http_client's and
+    ClientSession's own — so a bare `await` lets both re-wrap it on the
+    way out)."""
+    try:
+        asyncio.run(coro)
+    except (MCPError, BaseExceptionGroup) as exc:
+        print(f"\n{_mcp_error_message(exc) or exc}")
+        raise typer.Exit(1)
 
 
 def _print_tool_list(tools: list[Tool]) -> None:
@@ -117,7 +153,7 @@ def cli(
     url = f"{server.rstrip('/')}/mcp/"
     ctx.obj = (url, token)
     if ctx.invoked_subcommand is None:
-        asyncio.run(_repl(url, token))
+        _run_async(_repl(url, token))
 
 
 @app.command("list")
@@ -130,7 +166,7 @@ def list_tools(ctx: typer.Context) -> None:
             tools = await session.list_tools()
             _print_tool_list(tools.tools)
 
-    asyncio.run(_run())
+    _run_async(_run())
 
 
 @app.command()
@@ -151,14 +187,14 @@ def call(
         async with _connect(url, token) as session:
             await _print_call_result(session, tool_name, parsed_arguments)
 
-    asyncio.run(_run())
+    _run_async(_run())
 
 
 @app.command()
 def repl(ctx: typer.Context) -> None:
     """Connect once and keep calling tools interactively (same as no subcommand)."""
     url, token = ctx.obj
-    asyncio.run(_repl(url, token))
+    _run_async(_repl(url, token))
 
 
 if __name__ == "__main__":

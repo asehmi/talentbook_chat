@@ -38,7 +38,7 @@ from typing import Any
 
 import httpx2
 import streamlit as st
-from mcp import ClientSession
+from mcp import ClientSession, MCPError
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import Tool
 
@@ -60,6 +60,32 @@ class McpConnectionError(RuntimeError):
     """The MCP server couldn't be reached, or rejected the token —
     surfaced as a friendly page-level message rather than a raw traceback
     with an asyncio stack in it."""
+
+
+def _mcp_error_message(exc: BaseException) -> str | None:
+    """Unwrap a (possibly nested) ExceptionGroup to find the underlying
+    MCPError and build an actionable one-line message, instead of
+    get_bridge() below passing the exception's own str() — a
+    BaseExceptionGroup's str() still spells out "unhandled errors in a
+    TaskGroup", which is exactly the raw-traceback-adjacent wording this
+    class exists to avoid. The SDK's own streamable_http client collapses
+    *any* non-2xx HTTP response (401, 403, 429, 500...) into a generic
+    "Server returned an error response" with no distinguishing status
+    code reaching this far — so this can't name the exact cause, only the
+    likely one (a bad token, since that's by far the most common way to
+    hit this)."""
+    if isinstance(exc, MCPError):
+        return (
+            f"the server rejected the connection ({exc.message}). This "
+            "usually means the token is invalid, expired, or revoked. "
+            "Check Connected Agents in the app and issue a fresh one if needed"
+        )
+    if isinstance(exc, BaseExceptionGroup):
+        for sub in exc.exceptions:
+            message = _mcp_error_message(sub)
+            if message:
+                return message
+    return None
 
 
 class McpBridge:
@@ -143,8 +169,9 @@ def get_bridge(token: str, server_address: str) -> McpBridge:
             last_exc = exc
             if attempt == 0:
                 time.sleep(0.5)
+    detail = _mcp_error_message(last_exc) or str(last_exc)
     raise McpConnectionError(
-        f"Couldn't connect to the Talentbook MCP server at {url} ({last_exc}). "
+        f"Couldn't connect to the Talentbook MCP server at {url}: {detail}. "
         f"Double-check the token and server address, and make sure the backend "
         f"is running."
     ) from last_exc
